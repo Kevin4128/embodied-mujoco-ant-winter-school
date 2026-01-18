@@ -12,7 +12,7 @@ from gymnasium.envs.mujoco.mujoco_rendering import MujocoRenderer
 
 # Import custom modules.
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../embodied_ant_env')))
-from embodied_ant_env import ForwardTask, BackAndForthTask
+from embodied_ant_env import ForwardTask
 
 # Constants.
 WORKSPACE_LENGTH = 10.0 # m
@@ -27,9 +27,9 @@ class AntEnv(gym.Env):
         model_path: str = os.path.join(os.path.dirname(__file__), "assets/embodied_mujoco_ant.xml"),
         render_mode: str | None = None,
         control_dt: float = 0.02,
-        terminate_on_upside_down: bool = False,
+        terminate_on_upside_down: bool = True,
         joint_config: dict[str, float] | None = None,
-        task: ForwardTask | BackAndForthTask = ForwardTask(),
+        task: ForwardTask = ForwardTask(),
         sleep_until_next_step: bool = False,
     ):
         super().__init__()
