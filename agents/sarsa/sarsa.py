@@ -35,7 +35,6 @@ def linear_ramp(start_pos: float, end_pos: float, duration: float):
     input_pos_list = np.linspace(start_pos, end_pos, num)
     return input_pos_list
 
-# plt.figure()
 class OptionEnv:
     def __init__(self, env, options, discount=0.99):
         self.env = env
@@ -43,17 +42,11 @@ class OptionEnv:
         self.discount = discount
         self.joint_action = np.zeros(env.action_space.shape[0])
 
-        # Logs.
-        self.obs_list = []
-        self.xy_pos_list = []
-        self.reward_list = []
-
         # Reward tracker.
         self.reward_tracker = RewardTracker(env_dt=args.dt,
                                     env_id=f"run_{args.env_id}",
                                     time_window=120.0,
                                     log_folder=log_dir)
-        self.average_rewards_per_second = []
         self.info = None
 
     def step(self, option_idx: int):
@@ -79,15 +72,12 @@ class OptionEnv:
             self.joint_action[hip_joint_idx] = hip_traj[i]
             self.joint_action[knee_joint_idx] = knee_traj[i]
             obs, reward, terminated, truncated, self.info = self.env.step(self.joint_action)
-
-            # Record data.
-            self.obs_list.append(obs)
-            self.xy_pos_list.append([self.info["current_x_position"], self.info["current_y_position"]])
-            self.reward_list.append(reward)
+            original_reward = reward
+            reward *= args.reward_scaling
 
             # Average reward update.
-            self.reward_tracker.update(reward)
-            self.average_rewards_per_second.append(self.reward_tracker.average_reward_per_second)
+            self.reward_tracker.update(original_reward)
+            self.reward_tracker.log()
 
             total_reward += gamma_i * reward
             gamma_i *= self.discount
@@ -98,7 +88,7 @@ class OptionEnv:
 
     def reset(self, seed=None):
         self.joint_pos = np.zeros(self.env.action_space.shape[0])
-        return self.env.reset(seed=SEED)
+        return self.env.reset(seed=args.seed if seed is None else seed)
 
     def render(self):
         return self.env.render_with_arrow(self.info)
@@ -334,7 +324,7 @@ logging_data = {
 }
 logging_data_df = pd.DataFrame(logging_data)
 
-nb_options = 0
+idx_options = 0
 return_per_timelimit = 0.0
 idx_timelimit_episode = 0
 real_time_seconds = 0.0
@@ -373,7 +363,7 @@ while True:
     return_per_timelimit += R
     real_time_seconds += options_env.duration_steps(O) * args.dt
 
-    nb_options += 1
+    idx_options += 1
 
     if terminated or truncated:
         print('Terminated', terminated, 'truncated', truncated)
@@ -386,10 +376,9 @@ while True:
         logging_data["reward_per_option"].append(R)
         logging_data["real_time_seconds"].append(real_time_seconds)
 
-        print(f"Episode {idx_timelimit_episode} | reward: {return_per_timelimit:.4f} | time in seconds: {(real_time_seconds):.4f} | time in hours: {(real_time_seconds) / 3600:.4f} | epsilon: {EPSILON:.4f}")
+        print(f"Ep. {idx_timelimit_episode} | Return: {return_per_timelimit:.4f} | Time in sec: {(real_time_seconds):.4f} | Time in hours: {(real_time_seconds) / 3600:.4f} | Average reward: {options_env.reward_tracker.average_reward_per_second:.4f}")
 
         # Save logging data.
-        # Create a DataFrame with just the new row (last item in each list)
         new_row = {
             "timelimit_episode": logging_data["timelimit_episode"][-1],
             "return_per_timelimit": logging_data["return_per_timelimit"][-1],
@@ -411,87 +400,6 @@ while True:
         np.save(os.path.join(weights_iht_folder, f"weights.npy"), w)
         pickle.dump(iht, open(os.path.join(weights_iht_folder, f"iht.pkl"), "wb"))
 
-        # Save trajectory.
-        trajectory_df = pd.DataFrame(options_env.xy_pos_list, columns=["x", "y"])
-        trajectory_df.to_csv(os.path.join(folder_trajectory, f"true_pos_xy_{idx_timelimit_episode}.csv"), index=False)
-
         idx_timelimit_episode += 1
-        nb_options = 0
+        idx_options = 0
         return_per_timelimit = 0.0
-
-        with PdfPages(os.path.join(log_dir, f"report.pdf")) as pdf:
-            # Average reward plot.
-            fig, ax = plt.subplots()
-            ax.plot(options_env.average_rewards_per_second[options_env.reward_tracker.window_size:])
-            ax.set_xlabel('Steps')
-            ax.set_ylabel('Average Reward per Second')
-            ax.set_title('Average Reward per Second over Steps')
-            plt.tight_layout()
-            pdf.savefig()
-            plt.close()
-
-            # Reward plot.
-            fig, ax1 = plt.subplots()
-            ax1.plot(logging_data_df['timelimit_episode'], logging_data_df['return_per_timelimit'], color="blue", label='return')
-            ax1.set_xlabel('Episode')
-            ax1.set_ylabel('Return')
-            ax1.set_title('Return per Episode')
-            ax1.axhline(y=0, color='black', linestyle='--', linewidth=0.5)
-            ax1.legend()
-            ax2 = ax1.twiny()
-            ax2.set_xlim(ax1.get_xlim())
-            ax2.xaxis.set_ticks_position("bottom")
-            ax2.xaxis.set_label_position("bottom")
-            ax2.spines["bottom"].set_position(("outward", 40))
-            time_ticks = np.linspace(0, logging_data_df['real_time_seconds'].max() / 3600, 10)  # 10 evenly spaced time points.
-            episode_ticks = np.linspace(0, logging_data_df['timelimit_episode'].max(), 10)  # 10 evenly spaced episode points.
-            ax1.set_xticks(episode_ticks)
-            ax1.set_xticklabels([f"{int(e)}" for e in episode_ticks])
-            ax2.set_xticks(episode_ticks)
-            ax2.set_xticklabels([f"{t:.2f}h" for t in time_ticks])
-            ax2.set_xlabel("Real Time (hours)")
-            plt.tight_layout()
-            pdf.savefig()
-            plt.close()
-
-            # Plot the trajectory.
-            plt.figure()
-            plt.plot(trajectory_df['x'], trajectory_df['y'], '-.', label=f'traj {idx_timelimit_episode}', alpha=0.5)
-            plt.scatter(trajectory_df['x'][0], trajectory_df['y'][0], color='red', label='start')
-            plt.scatter(trajectory_df['x'].iloc[-1], trajectory_df['y'].iloc[-1], color='green', label='end')
-            plt.plot(np.cos(np.linspace(0, 2*np.pi, 100)), np.sin(np.linspace(0, 2*np.pi, 100)), '--', label='circle')
-            plt.plot(0, 0, 'x', markersize=10, color='black')
-            plt.xlabel('x')
-            plt.ylabel('y')
-            plt.axis('equal')
-            plt.title(f'Trajectory {idx_timelimit_episode}')
-            plt.legend()
-            pdf.savefig()
-            plt.close()
-
-            # Debugging.
-            fig, axs = plt.subplots(2, 1, sharex=True, figsize=(10, 10))
-            axs = axs.flatten()
-            xy_np = np.array(options_env.xy_pos_list)
-            ax_pos = axs[0]
-            ax_pos.plot(xy_np[:, 0], label='x', color='tab:blue')
-            ax_pos.set_ylabel('X Position [m]', color='tab:blue')
-            ax_pos.tick_params(axis='y', labelcolor='tab:blue')
-
-            ax_pos_twin = ax_pos.twinx()
-            ax_pos_twin.plot(xy_np[:, 1], label='y', color='tab:orange')
-            ax_pos_twin.set_ylabel('Y Position [m]', color='tab:orange')
-            ax_pos_twin.tick_params(axis='y', labelcolor='tab:orange')
-
-            ax_pos.set_xlabel('Time')
-            ax_pos.set_title('X and Y Position over Time')
-
-            reward_np = np.array(options_env.reward_list)
-            axs[1].plot(reward_np, '-o', label='reward')
-            axs[1].set_xlabel('Time')
-            axs[1].set_ylabel('Reward')
-            axs[1].set_title('Reward over time')
-            axs[1].legend()
-            plt.tight_layout()
-            pdf.savefig()
-            plt.close()
