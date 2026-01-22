@@ -1,14 +1,14 @@
 import pandas as pd
 import matplotlib
-matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 import sys
 import os
 import json
 
 # Path to the CSV file.
-csv_path = 'logs/sarsa_ant_forward_20260121_230625/run_SimEmbodiedAnt_average_rewards.csv'
-csv_path_logging_data = 'logs/sarsa_ant_forward_20260121_230625/logging_data.csv'
+folder = 'logs/sarsa_ant_forward_20260121_235344'
+csv_path = os.path.join(folder, 'run_SimEmbodiedAnt_average_rewards.csv')
+csv_path_logging_data = os.path.join(folder, 'logging_data.csv')
 # Read the CSV file.
 print(f"Reading data from {csv_path}...")
 df = pd.read_csv(csv_path)
@@ -49,10 +49,10 @@ ax2.grid(True, alpha=0.3)
 ax2.legend(loc='upper left', fontsize=11)
 ax2.set_title('Return per Timelimit', fontsize=12, fontweight='bold')
 
-fig.suptitle('SARSA Learning: Average Reward and Return per Timelimit', fontsize=14, fontweight='bold')
+fig.suptitle('Average Reward and Return per Timelimit', fontsize=14, fontweight='bold')
 plt.tight_layout()
 
 output_path = os.path.join(os.path.dirname(csv_path), 'sarsa_learning_plot.png')
 plt.savefig(output_path, dpi=300, bbox_inches='tight')
 print(f"\nPlot saved to: {output_path}")
-plt.close()
+plt.show()
