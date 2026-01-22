@@ -212,14 +212,6 @@ weights_iht_folder = os.path.join(log_dir, "weights_iht")
 if not os.path.exists(weights_iht_folder):
     os.makedirs(weights_iht_folder)
 
-frames_folder = os.path.join(log_dir, "frames")
-if not os.path.exists(frames_folder):
-    os.makedirs(frames_folder)
-
-folder_trajectory = os.path.join(log_dir, "trajectory")
-if not os.path.exists(folder_trajectory):
-    os.makedirs(folder_trajectory)
-
 # Environment.
 joint_config = {
     'hip_zero': 0.0,
