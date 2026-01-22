@@ -195,7 +195,7 @@ parser.add_argument('--dt', type=float, default=0.05)
 parser.add_argument('--env_id', type=str, default='SimEmbodiedAnt')
 parser.add_argument('--capture_video', action='store_true')
 parser.add_argument('--exp_name', type=str, default='sarsa_ant_forward')
-parser.add_argument('--reward_scaling', type=float, default=10.0)
+parser.add_argument('--reward_scaling', type=float, default=1.0)
 parser.add_argument('--load_weights_from_dir', type=str, default=None)
 
 args = parser.parse_args()
@@ -231,7 +231,7 @@ if args.hw_config is None:
         model_path=os.path.join(os.path.dirname(__file__), '../../sim/assets/embodied_mujoco_ant.xml'),
     )
     if args.capture_video:
-        print('RecordVideo')
+        print('RecordVideo!')
         env = gym.wrappers.RecordVideo(env, os.path.join(log_dir, "videos", args.env_id),
                                         step_trigger=lambda x: x % 1000 == 0)
 
@@ -243,7 +243,6 @@ else:
                         joint_config=joint_config,
                         task=ForwardTask(),
                         )
-
 
 # Constants.
 MAX_OPTIONS_PER_TIMELIMIT_EPISODE = 300
