@@ -216,37 +216,44 @@ class MotorController:
 if __name__ == "__main__":
     import json
     import sys
-    import time
-    # drv = MotorController(port=sys.argv[1], motor_list=[
-    #     {'id': 10, 'min_position': -0.79, 'max_position': 0.79, 'offset': 0.79},
-    #     {'id': 11, 'min_position': -0.79, 'max_position': 0.79, 'offset': 0.79},
-    #     {'id': 20, 'min_position': -0.79, 'max_position': 0.79, 'offset': -0.79},
-    #     {'id': 21, 'min_position': -0.79, 'max_position': 0.79, 'offset': 0.79},
-    #     {'id': 30, 'min_position': -0.79, 'max_position': 0.79, 'offset': 0.79},
-    #     {'id': 31, 'min_position': -0.79, 'max_position': 0.79, 'offset': 0.79},
-    #     {'id': 40, 'min_position': -0.79, 'max_position': 0.79, 'offset': -0.79},
-    #     {'id': 41, 'min_position': -0.79, 'max_position': 0.79, 'offset': -0.79},
-    # ])
+
     cfg = json.load(open(sys.argv[1]))
     drv = MotorController(port=cfg['motor_port'], motor_list=cfg['motor_list'])
     drv.disable()
     drv.enable()
-    while True:
-        t_start = time.time()
-        pos, vel, load = drv.get_feedback()
-        # time.sleep(0.01)
-        # Generate random actions for all motors
-        positions = []
-        for motor in drv.motor_list:
-            # Random position within each motor's [min_position, max_position] range
-            random_pos = 0.1 * np.random.uniform(motor['min_position'], motor['max_position'])
-            positions.append(random_pos)
-        drv.set_positions(positions)
-        errors = drv.check_errors()
-        print(f"Errors: {errors}")
-        if len(errors) > 0:
-            print(f"Errors: {errors}")
 
-        t_end = time.time()
-        print(f"Time taken: {t_end - t_start:.3f}s")
-        # time.sleep(0.001)
+    print("Press Enter to test each motor one by one. Type 'q' to quit.\n")
+
+    for idx, motor in enumerate(drv.motor_list):
+        motor_id = motor['id']
+        min_pos = motor['min_position']
+        max_pos = motor['max_position']
+
+        print(f"Motor {idx+1}/{len(drv.motor_list)} (ID: {motor_id}) - Press Enter to test...")
+        user_input = input().strip().lower()
+        if user_input == 'q':
+            break
+
+        # Move motor through range
+        print(f"Moving motor {motor_id}...")
+        for i in range(100):
+            t = i / 100
+            sin_val = np.sin(2 * np.pi * t)
+            # pos = (sin_val + 1) / 2 * (max_pos - min_pos) + min_pos
+            pos = max_pos
+
+            positions = [0.0] * len(drv.motor_list)
+            positions[idx] = pos
+            drv.set_positions(positions)
+            time.sleep(0.02)
+
+        # Return to zero
+        positions = [0.0] * len(drv.motor_list)
+        drv.set_positions(positions)
+        time.sleep(0.5)
+        print(f"Motor {motor_id} test complete.\n")
+
+    print("Disabling motors...")
+    drv.disable()
+    print("Done.")
+
