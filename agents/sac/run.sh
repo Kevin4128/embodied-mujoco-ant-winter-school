@@ -8,7 +8,7 @@ if [ "$1" == "sim" ]; then
         --learning_starts 2000 \
         --batch_size 256 \
         --task_type forward \
-        --model_path ../../sim/assets/embodied_mujoco_ant.xml \
+        --model_path ../../sim/assets/embodied_mujoco_ant_higher_fidelity.xml \
         --capture_video \
         --exp_name  sim_learning_to_walk
 fi
