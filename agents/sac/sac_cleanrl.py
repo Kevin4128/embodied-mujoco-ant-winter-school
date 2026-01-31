@@ -109,6 +109,11 @@ def parse_args():
     parser.add_argument("--save_every_n_steps", type=int, default=500,
                         help="save every n steps")
 
+    parser.add_argument("--target_x", type=float, default=1.5,
+                        help="Target X position for go_to_target task")
+    parser.add_argument("--target_y", type=float, default=0.0,
+                        help="Target Y position for go_to_target task")
+    
     args = parser.parse_args()
     return args
 
@@ -179,10 +184,11 @@ class Actor(nn.Module):
         return action, log_prob, mean
 
 
-def make_ant_envs(args, task, disk_folder, run_name):
+def make_ant_envs(args, task_factory, disk_folder, run_name):
     """Create the vectorized environment outside the SAC class."""
     def make_env(env_id, seed, idx, capture_video, run_name):
         def _init():
+            current_task = task_factory()
             joint_config = {
                 'hip_zero': 0,
                 'knee_zero': -np.radians(50),
@@ -198,6 +204,7 @@ def make_ant_envs(args, task, disk_folder, run_name):
                     joint_config=joint_config,
                     model_path=os.path.join(os.path.dirname(__file__), args.model_path),
                     sleep_until_next_step=args.sleep_until_next_step,
+                    task=current_task，
                 )
             else:
                 with open(args.hw_config, 'r') as f:
@@ -205,7 +212,7 @@ def make_ant_envs(args, task, disk_folder, run_name):
                 env = make_ant_env(cfg, render_mode=args.render_mode,
                                    dt=args.dt,
                                    joint_config=joint_config,
-                                   task=task,
+                                   task=current_task,
                                    )
 
             if capture_video and idx == 0:
@@ -605,17 +612,22 @@ def main():
 
     # Create task.
     if args.task_type == "forward":
-        task = ForwardTask()
+        task_factory = lambda: ForwardTask() # Use a lambda/factory to create fresh tasks
+    elif args.task_type == "go_to_target":
+        # Enable randomization so the agent learns to generalize
+        task_factory = lambda: GoToTargetTask(
+            target_position=np.array([args.target_x, args.target_y]),
+            randomize=True  # Set this to True for general training
+        )    
     else:
         raise ValueError(f"Invalid task type: {args.task_type}")
-
-    # Create environment.
-    envs = make_ant_envs(args, task, disk_folder, run_name)
-
-    # Create SAC agent.
+    
+    # IMPORTANT: We pass the factory (lambda), not the object, to fix a potential bug
+    # where multiple envs share the same task state.
+    envs = make_ant_envs(args, task_factory, disk_folder, run_name) 
+    # ------------------------
+    
     agent = SAC(args, envs, disk_folder=disk_folder, run_name=run_name)
-
-    # Run the policy.
     agent.run_policy()
 
 if __name__ == "__main__":
