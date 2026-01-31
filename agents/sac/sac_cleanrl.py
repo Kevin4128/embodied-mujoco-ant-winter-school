@@ -204,8 +204,8 @@ def make_ant_envs(args, task_factory, disk_folder, run_name):
                     joint_config=joint_config,
                     model_path=os.path.join(os.path.dirname(__file__), args.model_path),
                     sleep_until_next_step=args.sleep_until_next_step,
-                    task=current_task，
-                )
+                    task=current_task,
+                    )
             else:
                 with open(args.hw_config, 'r') as f:
                     cfg = json.load(f)
