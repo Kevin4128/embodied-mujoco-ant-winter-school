@@ -21,13 +21,14 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+import functools
 
 # Import custom modules.
 from buffers import ReplayBuffer
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../sim')))
 from ant_mujoco import AntEnv
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../embodied_ant_env')))
-from embodied_ant_env import make_ant_env, ForwardTask
+from embodied_ant_env import make_ant_env, ForwardTask, GoToTargetTask
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
 from reward import RewardTracker
 
@@ -95,9 +96,9 @@ def parse_args():
                         help="terminate episode if upside down")
     parser.add_argument("--weights_path", type=str, default=None,
                         help="load previous weights")
-    parser.add_argument("--task_type", type=str, default="forward",
-                        choices=["forward", "back_and_forth"],
-                        help="type of task")
+    parser.add_argument("--task_type", type=str, default="forward", 
+                    choices=["forward", "back_and_forth", "go_to_target"], 
+                    help="Task to solve")
     parser.add_argument("--reward_scale", type=float, default=10.0,
                         help="reward scale factor")
     parser.add_argument("--model_path", type=str, default=None,
@@ -200,7 +201,6 @@ def make_ant_envs(args, task_factory, disk_folder, run_name):
                     control_dt=args.dt,
                     render_mode=args.render_mode,
                     terminate_on_upside_down=args.terminate_on_upside_down,
-                    task=task,
                     joint_config=joint_config,
                     model_path=os.path.join(os.path.dirname(__file__), args.model_path),
                     sleep_until_next_step=args.sleep_until_next_step,
@@ -479,7 +479,8 @@ class SAC:
             self.reward_tracker.update(rewards.item())
             self.reward_tracker.log()
         else:
-            raise ValueError("reward_tracker is only supported for single environment")
+            # raise ValueError("reward_tracker is only supported for single environment") <--- DELETE THIS
+            pass  # <--- ADD THIS (It means "do nothing")
 
         # Log the infos - add to buffer instead of writing directly.
         infos_to_log = {}
@@ -502,7 +503,7 @@ class SAC:
                                      "alpha_losses": alpha_loss.item() if alpha_loss is not None else None,
                                      "SPS": int(global_step / (time.time() - self.start_time)) if self.start_time else 0,
                                      "average_reward_per_second": self.reward_tracker.average_reward_per_second,
-                                     "reward": rewards.item()})
+                                     "reward": rewards.mean().item()})
 
         # Write to CSV every 1000 steps.
         if global_step % self.args.save_every_n_steps == 0:
@@ -610,23 +611,31 @@ def main():
     os.makedirs(runs_folder, exist_ok=True)
     run_name = f"{args.exp_name}_{date}_seed_{args.seed}"
 
-    # Create task.
+    # --- TASK CONFIGURATION (Windows Safe) ---
+    # We use functools.partial because 'lambda' functions cannot be 
+    # sent to other CPU cores (pickled) on Windows.
+    
     if args.task_type == "forward":
-        task_factory = lambda: ForwardTask() # Use a lambda/factory to create fresh tasks
+        # Passing the class directly works as a factory
+        task_factory = ForwardTask
+        
     elif args.task_type == "go_to_target":
-        # Enable randomization so the agent learns to generalize
-        task_factory = lambda: GoToTargetTask(
+        # Create a "recipe" for the task without creating the object yet.
+        # Each parallel environment will call this to get its own unique task.
+        task_factory = functools.partial(
+            GoToTargetTask,
             target_position=np.array([args.target_x, args.target_y]),
-            randomize=True  # Set this to True for general training
-        )    
+            randomize=True  # Enable randomization for general training
+        )
     else:
         raise ValueError(f"Invalid task type: {args.task_type}")
     
-    # IMPORTANT: We pass the factory (lambda), not the object, to fix a potential bug
-    # where multiple envs share the same task state.
-    envs = make_ant_envs(args, task_factory, disk_folder, run_name) 
-    # ------------------------
+    # -----------------------------------------
     
+    # Create the parallel environments using the factory
+    envs = make_ant_envs(args, task_factory, disk_folder, run_name) 
+    
+    # Initialize and run the agent
     agent = SAC(args, envs, disk_folder=disk_folder, run_name=run_name)
     agent.run_policy()
 

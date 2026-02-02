@@ -11,41 +11,52 @@ from gymnasium import spaces
 from gymnasium.spaces import Box
 
 class GoToTargetTask:
-    def __init__(self, target_position=np.array([1.0, 0.0]), action_cost_weight=0.01, success_radius=0.15):
-        self.target_position = target_position
+    def __init__(self, target_position=np.array([1.0, 0.0]), randomize=False, random_range=2.0, action_cost_weight=0.01, success_radius=0.15):
+        self.default_target = target_position
+        self.target_position = target_position.copy()
+        
+        # --- Randomization Settings ---
+        self.randomize = randomize
+        self.random_range = random_range 
+        # ------------------------------
+
         self.action_cost_weight = action_cost_weight
         self.success_radius = success_radius
         self.last_pos = None
         self.last_action = np.zeros(8)
         self.last_distance = None
         
-        # We need a larger observation space (26) than ForwardTask (24)
-        # to include the relative X and Y distance to the target.
+        # Observation space: 26 dims (includes relative target vector)
         self.observation_space = spaces.Box(low=-10.0, high=10.0, shape=(26,), dtype=np.float32)
 
     def reset(self, info, action=np.zeros(8)):
+        # --- Randomize Logic on Reset ---
+        if self.randomize:
+            angle = np.random.uniform(0, 2 * np.pi)
+            distance = np.random.uniform(0.5, self.random_range)
+            self.target_position = np.array([distance * np.cos(angle), distance * np.sin(angle)])
+            print(f"New Target: {self.target_position}")
+        else:
+            self.target_position = self.default_target.copy()
+        # --------------------------------
+
         self.last_pos = None
         self.last_distance = None
         self.last_action = np.zeros(8)
-        # You can optionally randomize self.target_position here if you want general navigation
         return self(info, action)
 
     def _make_observation(self, info, target_pos):
-        # 1. Get current position and heading
         pos = np.array([info['current_x_position'], info['current_y_position']])
         hx, hy = info['heading_vector'] 
         
-        # 2. Calculate the vector pointing to the target in the WORLD frame
         rel_world = target_pos - pos
         
-        # 3. Project that vector into the ROBOT'S local frame (Forward and Lateral)
-        # This is crucial: it tells the robot "target is 2m ahead" or "target is 1m to the left"
+        # Rotate into robot frame
         rel_robot_x = rel_world[0] * hx + rel_world[1] * hy
         rel_robot_y = -rel_world[0] * hy + rel_world[1] * hx
         
-        # 4. Construct the full observation vector
         return np.concatenate([
-            [rel_robot_x, rel_robot_y], # The new "Go To" info
+            [rel_robot_x, rel_robot_y],
             info['joint_positions'],
             info['joint_velocities'],
             info['heading_vector'],
@@ -57,24 +68,20 @@ class GoToTargetTask:
         target = self.target_position
         distance = np.linalg.norm(pos - target)
         
-        # Reward Logic:
         reward = 0.0
         
-        # 1. Shaping reward: Give points for getting closer compared to the last step
         if self.last_distance is not None:
             reward += (self.last_distance - distance) * 40.0 
 
-        # 2. Penalty for jerky movement
         cost_action = np.sum(np.square(self.last_action - action)) * self.action_cost_weight
         reward -= cost_action
 
         self.last_distance = distance
         self.last_action = action.copy()
         
-        # 3. Check for success (did we reach the target?)
         terminated = distance < self.success_radius
         if terminated: 
-            reward += 10.0 # Bonus for reaching goal
+            reward += 10.0
             print(f"Target Reached! {pos}")
         
         observation = self._make_observation(info, target)
